@@ -1,0 +1,1152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FakeScope — Review Authenticity Detector</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+  --ink: #0D0D0F;
+  --paper: #F5F2EC;
+  --cream: #EDE9E0;
+  --teal: #0F7B6C;
+  --teal-light: #E0F2EE;
+  --teal-mid: #1AA08E;
+  --red: #C0392B;
+  --red-light: #FAECEB;
+  --amber: #B7791F;
+  --amber-light: #FEF3C7;
+  --line: rgba(13,13,15,0.12);
+  --shadow: 0 4px 24px rgba(13,13,15,0.08);
+  --shadow-lg: 0 12px 48px rgba(13,13,15,0.14);
+  --radius: 14px;
+}
+ 
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+ 
+body {
+  font-family: 'Syne', sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+ 
+/* ── NOISE TEXTURE OVERLAY ── */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none; z-index: 999; opacity: 0.6;
+}
+ 
+/* ── HEADER ── */
+header {
+  padding: 2rem 3rem 1.5rem;
+  border-bottom: 1.5px solid var(--line);
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0;
+  background: rgba(245,242,236,0.92);
+  backdrop-filter: blur(12px);
+  z-index: 100;
+}
+ 
+.logo {
+  display: flex; align-items: baseline; gap: 10px;
+}
+.logo-word {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1.7rem; color: var(--ink);
+  letter-spacing: -0.5px;
+}
+.logo-tag {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.68rem; color: var(--teal);
+  background: var(--teal-light);
+  padding: 3px 8px; border-radius: 20px;
+  font-weight: 500; letter-spacing: 0.5px;
+}
+ 
+.header-meta {
+  font-size: 0.78rem; color: rgba(13,13,15,0.45);
+  font-family: 'DM Mono', monospace;
+  letter-spacing: 0.3px;
+}
+ 
+/* ── HERO ── */
+.hero {
+  padding: 5rem 3rem 3.5rem;
+  max-width: 900px;
+}
+.hero-eyebrow {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.72rem; letter-spacing: 2px;
+  color: var(--teal); text-transform: uppercase;
+  margin-bottom: 1rem;
+}
+.hero h1 {
+  font-family: 'DM Serif Display', serif;
+  font-size: clamp(2.4rem, 5vw, 3.8rem);
+  line-height: 1.08; letter-spacing: -1px;
+  color: var(--ink); margin-bottom: 1.2rem;
+}
+.hero h1 em { font-style: italic; color: var(--teal); }
+.hero p {
+  font-size: 1.05rem; color: rgba(13,13,15,0.6);
+  max-width: 540px; line-height: 1.7; font-weight: 400;
+}
+ 
+/* ── MAIN LAYOUT ── */
+main { padding: 0 3rem 5rem; max-width: 1300px; }
+ 
+/* ── SECTION TITLES ── */
+.section-title {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.68rem; letter-spacing: 2.5px;
+  text-transform: uppercase; color: rgba(13,13,15,0.4);
+  margin-bottom: 1.2rem;
+  display: flex; align-items: center; gap: 12px;
+}
+.section-title::after {
+  content: ''; flex: 1; height: 1px; background: var(--line);
+}
+ 
+/* ── UPLOAD ZONE ── */
+.upload-card {
+  background: white;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius);
+  padding: 2.5rem;
+  box-shadow: var(--shadow);
+  margin-bottom: 2rem;
+}
+ 
+.drop-zone {
+  border: 2px dashed rgba(15,123,108,0.3);
+  border-radius: 10px;
+  padding: 3rem 2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--teal-light);
+  position: relative;
+}
+.drop-zone:hover, .drop-zone.drag-over {
+  border-color: var(--teal);
+  background: rgba(26,160,142,0.08);
+}
+.drop-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.drop-icon { font-size: 2.5rem; margin-bottom: 0.8rem; }
+.drop-text { font-size: 1rem; font-weight: 600; color: var(--ink); margin-bottom: 0.4rem; }
+.drop-sub { font-size: 0.82rem; color: rgba(13,13,15,0.5); font-family: 'DM Mono', monospace; }
+ 
+.file-info {
+  display: none;
+  margin-top: 1.2rem;
+  padding: 1rem 1.4rem;
+  background: var(--teal-light);
+  border-radius: 8px;
+  border-left: 3px solid var(--teal);
+  font-family: 'DM Mono', monospace;
+  font-size: 0.82rem; color: var(--ink);
+}
+ 
+/* ── BUTTONS ── */
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 0.85rem 1.8rem;
+  border-radius: 50px;
+  border: none; cursor: pointer;
+  font-family: 'Syne', sans-serif;
+  font-size: 0.9rem; font-weight: 600;
+  transition: all 0.2s;
+  text-decoration: none;
+}
+.btn-primary {
+  background: var(--ink); color: var(--paper);
+}
+.btn-primary:hover { background: #2D2D30; transform: translateY(-1px); box-shadow: var(--shadow); }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+ 
+.btn-teal { background: var(--teal); color: white; }
+.btn-teal:hover { background: #0A6055; transform: translateY(-1px); }
+ 
+.btn-outline {
+  background: transparent;
+  border: 1.5px solid var(--line);
+  color: var(--ink);
+}
+.btn-outline:hover { border-color: var(--ink); background: var(--cream); }
+ 
+.btn-sm { padding: 0.55rem 1.2rem; font-size: 0.82rem; }
+ 
+.run-btn-wrap { margin-top: 1.5rem; display: flex; gap: 1rem; align-items: center; }
+ 
+/* ── PROGRESS ── */
+.progress-wrap {
+  display: none;
+  margin-top: 1.5rem;
+}
+.progress-steps {
+  display: flex; flex-direction: column; gap: 0.6rem;
+}
+.step {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 0.85rem; color: rgba(13,13,15,0.4);
+  font-family: 'DM Mono', monospace;
+  transition: color 0.3s;
+}
+.step.active { color: var(--teal); }
+.step.done { color: var(--ink); }
+.step-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: currentColor; flex-shrink: 0;
+  transition: all 0.3s;
+}
+.step.active .step-dot { animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+.status-note { margin-top: 0.8rem; font-family: 'DM Mono', monospace; font-size: 0.76rem; color: rgba(13,13,15,0.55); }
+ 
+/* ── RESULTS GRID ── */
+#results { display: none; }
+ 
+.results-header {
+  margin: 3rem 0 1.5rem;
+  display: flex; align-items: flex-end; justify-content: space-between;
+}
+.results-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1.8rem; letter-spacing: -0.5px;
+}
+ 
+/* ── METRIC CARDS ── */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem; margin-bottom: 1.5rem;
+}
+.metric-card {
+  background: white; border-radius: var(--radius);
+  border: 1.5px solid var(--line);
+  padding: 1.4rem 1.6rem;
+  box-shadow: var(--shadow);
+  transition: transform 0.2s;
+}
+.metric-card:hover { transform: translateY(-2px); }
+.metric-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.68rem; letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: rgba(13,13,15,0.45);
+  margin-bottom: 0.8rem;
+}
+.metric-values {
+  display: flex; align-items: flex-end; justify-content: space-between;
+}
+.metric-basic { font-size: 1.4rem; font-weight: 700; color: #7F77DD; }
+.metric-modified { font-size: 1.8rem; font-weight: 800; color: var(--teal); }
+.metric-delta {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.78rem; font-weight: 600;
+  color: var(--teal);
+  background: var(--teal-light);
+  padding: 3px 8px; border-radius: 20px;
+  align-self: center;
+}
+ 
+/* ── CHARTS ROW ── */
+.charts-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1.2rem; margin-bottom: 1.2rem;
+}
+.chart-card {
+  background: white; border-radius: var(--radius);
+  border: 1.5px solid var(--line);
+  padding: 1.6rem;
+  box-shadow: var(--shadow);
+}
+.chart-card h3 {
+  font-size: 0.9rem; font-weight: 700; margin-bottom: 1.2rem;
+  color: var(--ink);
+}
+.chart-wrap { position: relative; height: 220px; }
+ 
+.cm-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1.2rem; margin-bottom: 1.2rem;
+}
+ 
+/* ── CONFUSION MATRIX ── */
+.cm-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+  margin-top: 0.8rem;
+}
+.cm-cell {
+  border-radius: 8px; padding: 1rem 0.5rem;
+  text-align: center; font-weight: 800;
+  font-size: 1.4rem; transition: transform 0.2s;
+}
+.cm-cell:hover { transform: scale(1.04); }
+.cm-cell span { display: block; font-size: 0.65rem; font-weight: 500; font-family: 'DM Mono', monospace; margin-top: 4px; opacity: 0.75; }
+.tp { background: #C8F0E8; color: #0A6055; }
+.tn { background: #C8F0E8; color: #0A6055; }
+.fp { background: #FDECEA; color: #8B1A10; }
+.fn { background: #FDECEA; color: #8B1A10; }
+ 
+.cm-axis {
+  display: flex; align-items: center; gap: 6px;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.68rem; color: rgba(13,13,15,0.4);
+  margin-bottom: 4px;
+  letter-spacing: 1px; text-transform: uppercase;
+}
+ 
+/* ── RANDOM REVIEW SECTION ── */
+.random-section {
+  background: white; border-radius: var(--radius);
+  border: 1.5px solid var(--line);
+  padding: 2rem; box-shadow: var(--shadow);
+  margin-top: 1.2rem;
+}
+.random-section h3 {
+  font-size: 1rem; font-weight: 700; margin-bottom: 0.5rem;
+}
+.random-section p {
+  font-size: 0.85rem; color: rgba(13,13,15,0.55); margin-bottom: 1.2rem;
+}
+.random-btns { display: flex; gap: 0.8rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+ 
+.review-display {
+  display: none;
+  border-radius: 10px; padding: 1.4rem;
+  font-size: 0.9rem; line-height: 1.7;
+}
+.review-display.real-review {
+  background: var(--teal-light);
+  border-left: 4px solid var(--teal);
+}
+.review-display.fake-review {
+  background: var(--red-light);
+  border-left: 4px solid var(--red);
+}
+.review-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.72rem; font-weight: 600;
+  letter-spacing: 1px; text-transform: uppercase;
+  margin-bottom: 0.8rem; padding: 4px 10px;
+  border-radius: 20px;
+}
+.badge-real { background: var(--teal); color: white; }
+.badge-fake { background: var(--red); color: white; }
+.review-text { color: var(--ink); font-style: italic; margin-bottom: 0.8rem; }
+.review-signals { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 0.8rem; }
+.signal-tag {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.68rem; padding: 3px 10px;
+  border-radius: 20px; font-weight: 500;
+}
+.signal-suspicious { background: #FDECEA; color: #8B1A10; }
+.signal-normal { background: var(--teal-light); color: #0A6055; }
+ 
+/* ── ALGORITHM EXPLAINER ── */
+.algo-strip {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 1rem; margin-bottom: 1.5rem;
+}
+.algo-card {
+  background: white; border-radius: var(--radius);
+  border: 1.5px solid var(--line);
+  padding: 1.8rem; box-shadow: var(--shadow);
+}
+.algo-card h4 { font-size: 1rem; font-weight: 700; margin-bottom: 0.6rem; }
+.algo-card p { font-size: 0.83rem; color: rgba(13,13,15,0.6); line-height: 1.65; }
+.tag-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 1rem; }
+.feat-tag {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.68rem; padding: 3px 10px;
+  border-radius: 20px; font-weight: 500;
+}
+.feat-basic { background: #EEEDFE; color: #3C3489; }
+.feat-behavioral { background: var(--teal-light); color: #0A6055; }
+ 
+/* ── SPINNER ── */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner {
+  width: 18px; height: 18px;
+  border: 2px solid rgba(245,242,236,0.4);
+  border-top-color: var(--paper);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  display: none;
+}
+ 
+/* ── TOAST ── */
+.toast {
+  position: fixed; bottom: 2rem; right: 2rem;
+  background: var(--ink); color: var(--paper);
+  padding: 0.9rem 1.4rem; border-radius: 10px;
+  font-size: 0.85rem; z-index: 9999;
+  transform: translateY(100px); opacity: 0;
+  transition: all 0.3s;
+  font-family: 'DM Mono', monospace;
+}
+.toast.show { transform: translateY(0); opacity: 1; }
+ 
+/* ── RESPONSIVE ── */
+@media (max-width: 900px) {
+  main, header { padding-left: 1.5rem; padding-right: 1.5rem; }
+  .hero { padding: 3rem 1.5rem 2rem; }
+  .metrics-grid { grid-template-columns: 1fr 1fr; }
+  .charts-row, .cm-row, .algo-strip { grid-template-columns: 1fr; }
+}
+ 
+/* ── FADE IN ANIMATION ── */
+@keyframes fadeUp {
+  from { opacity:0; transform: translateY(20px); }
+  to   { opacity:1; transform: translateY(0); }
+}
+.fade-up { animation: fadeUp 0.5s ease forwards; }
+.fade-up-1 { animation-delay: 0.05s; opacity: 0; }
+.fade-up-2 { animation-delay: 0.12s; opacity: 0; }
+.fade-up-3 { animation-delay: 0.20s; opacity: 0; }
+</style>
+</head>
+<body>
+ 
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <span class="logo-word">FakeScope</span>
+    <span class="logo-tag">v2.0 · Behavior-Augmented</span>
+  </div>
+  <div class="header-meta">Data Mining & Warehousing Project · 2026</div>
+</header>
+ 
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-eyebrow">🔬 Algorithm Comparison Study</div>
+  <h1>Detecting <em>fake reviews</em><br>with smarter features</h1>
+  <p>Upload any labeled review dataset (CSV with <code>category</code>, <code>rating</code>, <code>label</code>, <code>text_</code> columns). We run both a Basic Random Forest and our Modified Behavior-Augmented RF — then compare them head to head.</p>
+</div>
+ 
+<!-- MAIN -->
+<main>
+ 
+  <!-- UPLOAD -->
+  <div class="section-title">01 · Upload Dataset</div>
+  <div class="upload-card">
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="fileInput" accept=".csv">
+      <div class="drop-icon">📂</div>
+      <div class="drop-text">Drop your CSV here or click to browse</div>
+      <div class="drop-sub">Needs columns: category · rating · label (CG/OR) · text_</div>
+    </div>
+    <div class="file-info" id="fileInfo"></div>
+ 
+    <div class="run-btn-wrap">
+      <button class="btn btn-primary" id="runBtn" disabled onclick="runAnalysis()">
+        <div class="spinner" id="spinner"></div>
+        <span id="runBtnText">▶ Run Analysis</span>
+      </button>
+      <button class="btn btn-outline btn-sm" onclick="loadDemo()">Use Demo Data</button>
+    </div>
+ 
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-steps">
+        <div class="step" id="s1"><div class="step-dot"></div>Loading & cleaning dataset…</div>
+        <div class="step" id="s2"><div class="step-dot"></div>Engineering text features…</div>
+        <div class="step" id="s3"><div class="step-dot"></div>Engineering behavioral features…</div>
+        <div class="step" id="s4"><div class="step-dot"></div>Training Basic Random Forest (100 trees)…</div>
+        <div class="step" id="s5"><div class="step-dot"></div>Training Modified RF (200 trees + behavioral features)…</div>
+        <div class="step" id="s6"><div class="step-dot"></div>Computing metrics & building charts…</div>
+      </div>
+      <div class="status-note" id="statusNote">Ready to process your dataset.</div>
+    </div>
+  </div>
+ 
+  <!-- ALGO EXPLAINER (always visible) -->
+  <div class="section-title">02 · What We're Comparing</div>
+  <div class="algo-strip">
+    <div class="algo-card">
+      <h4>🌲 Basic Random Forest</h4>
+      <p>100 decision trees trained on simple text-surface statistics. Each tree votes; majority wins. Fast but shallow — can't see <em>why</em> something feels fake.</p>
+      <div class="tag-list">
+        <span class="feat-tag feat-basic">review_length</span>
+        <span class="feat-tag feat-basic">word_count</span>
+        <span class="feat-tag feat-basic">exclamation_count</span>
+        <span class="feat-tag feat-basic">question_count</span>
+        <span class="feat-tag feat-basic">avg_word_length</span>
+        <span class="feat-tag feat-basic">rating</span>
+      </div>
+    </div>
+    <div class="algo-card">
+      <h4>🧠 Modified Behavior-Augmented RF</h4>
+      <p>Same forest, 200 trees, but fed 6 extra behavioral signals that capture how a fake reviewer <em>behaves differently</em> from a real one.</p>
+      <div class="tag-list">
+        <span class="feat-tag feat-basic">+ all basic features</span>
+        <span class="feat-tag feat-behavioral">rating_deviation</span>
+        <span class="feat-tag feat-behavioral">upper_ratio</span>
+        <span class="feat-tag feat-behavioral">unique_word_ratio</span>
+        <span class="feat-tag feat-behavioral">hype_word_count</span>
+        <span class="feat-tag feat-behavioral">sentiment_mismatch</span>
+        <span class="feat-tag feat-behavioral">category_enc</span>
+      </div>
+    </div>
+  </div>
+ 
+  <!-- RESULTS -->
+  <div id="results">
+ 
+    <div class="results-header">
+      <div class="results-title">Results</div>
+      <div style="font-family:'DM Mono',monospace;font-size:0.75rem;color:rgba(13,13,15,0.4)" id="datasetMeta"></div>
+    </div>
+ 
+    <div class="section-title">03 · Performance Metrics</div>
+ 
+    <!-- METRIC CARDS -->
+    <div class="metrics-grid fade-up fade-up-1" id="metricsGrid"></div>
+ 
+    <!-- BAR + GAIN CHARTS -->
+    <div class="charts-row fade-up fade-up-2">
+      <div class="chart-card">
+        <h3>📊 Side-by-Side Comparison</h3>
+        <div class="chart-wrap"><canvas id="barChart"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>📈 Improvement from Modification</h3>
+        <div class="chart-wrap"><canvas id="gainChart"></canvas></div>
+      </div>
+    </div>
+ 
+    <!-- CONFUSION MATRICES + FEATURE IMPORTANCE -->
+    <div class="section-title">04 · Confusion Matrices</div>
+    <div class="cm-row fade-up fade-up-3">
+      <div class="chart-card">
+        <h3>🟣 Basic RF — Confusion Matrix</h3>
+        <div class="cm-axis">← Predicted →</div>
+        <div class="cm-grid" id="cmBasic"></div>
+      </div>
+      <div class="chart-card">
+        <h3>🟢 Modified RF — Confusion Matrix</h3>
+        <div class="cm-axis">← Predicted →</div>
+        <div class="cm-grid" id="cmModified"></div>
+      </div>
+      <div class="chart-card">
+        <h3>⭐ Feature Importance (Modified RF)</h3>
+        <div class="chart-wrap"><canvas id="featChart"></canvas></div>
+      </div>
+    </div>
+ 
+    <!-- RANDOM REVIEW EXPLORER -->
+    <div class="section-title">05 · Random Review Explorer</div>
+    <div class="random-section fade-up fade-up-3">
+      <h3>Generate a random review from the dataset</h3>
+      <p>See how our model would flag it — and why.</p>
+      <div class="random-btns">
+        <button class="btn btn-teal btn-sm" onclick="showRandom('real')">✅ Show a Real Review</button>
+        <button class="btn btn-sm" style="background:#C0392B;color:white" onclick="showRandom('fake')">🚨 Show a Fake Review</button>
+        <button class="btn btn-outline btn-sm" onclick="showRandom('any')">🎲 Surprise Me</button>
+      </div>
+      <div class="review-display" id="reviewDisplay"></div>
+    </div>
+ 
+  </div><!-- /results -->
+ 
+</main>
+ 
+<div class="toast" id="toast"></div>
+ 
+<script>
+let csvData = null;
+let parsedRows = [];
+let realReviews = [];
+let fakeReviews = [];
+let barChartInst, gainChartInst, featChartInst;
+
+const DEMO_REAL = [
+  {text:"These are just perfect, exactly what I was looking for.",rating:5,category:"Home_and_Kitchen_5"},
+  {text:"Such a great purchase can't beat it for the price",rating:5,category:"Home_and_Kitchen_5"},
+  {text:"What can you say--- cheap and it works as intended.",rating:3,category:"Electronics_5"},
+  {text:"Great cup. Will last forever. Keeps things cool and warm.",rating:5,category:"Home_and_Kitchen_5"},
+  {text:"Excellent quality product. Perfect for my kitchen.",rating:5,category:"Home_and_Kitchen_5"},
+  {text:"Good value for money. Works exactly as described.",rating:4,category:"Electronics_5"},
+  {text:"I've owned this for 6 months and it still works perfectly.",rating:5,category:"Electronics_5"},
+  {text:"Average product. Does what it says but nothing special.",rating:3,category:"Clothing_Shoes_and_Jewelry_5"},
+  {text:"Nice design and fast delivery. Happy with my purchase.",rating:4,category:"Home_and_Kitchen_5"},
+  {text:"Not bad but not great either. Expected more for the price.",rating:3,category:"Electronics_5"},
+];
+const DEMO_FAKE = [
+  {text:"Love this! Well made, sturdy, and very comfortable. I love it! Very pretty",rating:5,category:"Home_and_Kitchen_5"},
+  {text:"This is the BEST product I have EVER bought in my entire life!!!",rating:5,category:"Electronics_5"},
+  {text:"I WANTED DIFFERENT FLAVORS BUT THEY ARE NOT.",rating:1,category:"Grocery_and_Gourmet_Food_5"},
+  {text:"This pillow saved my back. I love the look and feel of this pillow.",rating:5,category:"Home_and_Kitchen_5"},
+  {text:"Amazing amazing amazing! Everyone should buy this perfect product!",rating:5,category:"Electronics_5"},
+  {text:"Great product great quality great price great shipping great everything!",rating:5,category:"Clothing_Shoes_and_Jewelry_5"},
+  {text:"This is incredible! Outstanding quality! Perfect in every way! Best purchase ever!",rating:5,category:"Electronics_5"},
+  {text:"love it, a great upgrade from the original. I've had mine for a couple of years",rating:5,category:"Home_and_Kitchen_5"},
+  {text:"Excellent! Amazing! Wonderful! Fantastic! I love it so much!",rating:5,category:"Home_and_Kitchen_5"},
+  {text:"They are the perfect touch for me and they look great and feel great.",rating:5,category:"Clothing_Shoes_and_Jewelry_5"},
+];
+
+const HYPE = ['best','amazing','worst','perfect','horrible','excellent','terrible','incredible','outstanding','awful'];
+const POS  = ['love','great','good','excellent','perfect','amazing','fantastic'];
+const NEG  = ['bad','terrible','horrible','worst','hate','awful','broken'];
+const HYPE_SET = new Set(HYPE);
+const POS_SET = new Set(POS);
+const NEG_SET = new Set(NEG);
+
+const fileInput = document.getElementById('fileInput');
+const dropZone = document.getElementById('dropZone');
+const fileInfo = document.getElementById('fileInfo');
+const runBtn = document.getElementById('runBtn');
+const spinner = document.getElementById('spinner');
+const runBtnText = document.getElementById('runBtnText');
+const progressWrap = document.getElementById('progressWrap');
+const statusNote = document.getElementById('statusNote');
+
+fileInput.addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (file) handleFile(file);
+});
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.name.toLowerCase().endsWith('.csv')) handleFile(file);
+});
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+function handleFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    csvData = e.target.result;
+    fileInfo.style.display = 'block';
+    fileInfo.innerHTML = `📄 <strong>${file.name}</strong> · ${(file.size/1024).toFixed(1)} KB loaded`;
+    runBtn.disabled = false;
+    statusNote.textContent = 'Dataset loaded. Ready to analyze.';
+  };
+  reader.readAsText(file);
+}
+
+function loadDemo() {
+  csvData = 'DEMO';
+  fileInfo.style.display = 'block';
+  fileInfo.innerHTML = `📄 <strong>demo_reviews.csv</strong> · Built-in demo dataset (20 reviews)`;
+  runBtn.disabled = false;
+  statusNote.textContent = 'Demo dataset loaded. Ready to analyze.';
+  toast('Demo data loaded — click Run Analysis!');
+}
+
+function parseCSV(text) {
+  const rows = [];
+  let row = [];
+  let cell = '';
+  let inQuotes = false;
+  const pushCell = () => { row.push(cell); cell = ''; };
+  const pushRow = () => {
+    if (row.length) rows.push(row.map(v => v.trim()));
+    row = [];
+  };
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') {
+      if (inQuotes && text[i + 1] === '"') { cell += '"'; i++; }
+      else inQuotes = !inQuotes;
+    } else if (ch === ',' && !inQuotes) {
+      pushCell();
+    } else if ((ch === '\n' || ch === '\r') && !inQuotes) {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      pushCell();
+      pushRow();
+    } else {
+      cell += ch;
+    }
+  }
+  if (cell.length || row.length) { pushCell(); pushRow(); }
+  if (!rows.length) return [];
+  const headers = rows[0].map(h => h.replace(/^"|"$/g, '').trim());
+  return rows.slice(1).filter(r => r.some(v => v)).map(vals => {
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = (vals[i] || '').replace(/^"|"$/g, ''));
+    return obj;
+  });
+}
+
+function fastHash(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) % 10;
+}
+
+function tokenizeLower(text) {
+  return text.toLowerCase().match(/[a-z']+/g) || [];
+}
+
+function extractFeatures(row, catAvgs) {
+  const text = String(row.text_ || '');
+  const tokens = tokenizeLower(text);
+  const word_count = tokens.length;
+  const rating = Number.parseFloat(row.rating) || 3;
+  const cat = String(row.category || '').trim();
+  const catAvg = catAvgs[cat] || 3.5;
+
+  let exclamation_count = 0;
+  let question_count = 0;
+  let upperCount = 0;
+  let totalWordLen = 0;
+  const unique = new Set();
+  let hype_word_count = 0;
+  let pos = 0;
+  let neg = 0;
+
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code === 33) exclamation_count++;
+    else if (code === 63) question_count++;
+    if (code >= 65 && code <= 90) upperCount++;
+  }
+
+  for (let i = 0; i < tokens.length; i++) {
+    const w = tokens[i];
+    totalWordLen += w.length;
+    unique.add(w);
+    if (HYPE_SET.has(w)) hype_word_count++;
+    if (POS_SET.has(w)) pos++;
+    if (NEG_SET.has(w)) neg++;
+  }
+
+  const review_length = text.length;
+  const avg_word_length = word_count ? totalWordLen / word_count : 0;
+  const rating_deviation = Math.abs(rating - catAvg);
+  const upper_ratio = review_length ? upperCount / review_length : 0;
+  const unique_word_ratio = word_count ? unique.size / word_count : 1;
+  const sentiment_mismatch = ((rating <= 2 && pos > neg) || (rating >= 4 && neg > pos)) ? 1 : 0;
+  const category_enc = fastHash(cat);
+
+  return {
+    basic: [review_length, word_count, exclamation_count, question_count, avg_word_length, rating],
+    modified: [review_length, word_count, exclamation_count, question_count, avg_word_length, rating,
+      rating_deviation, upper_ratio, unique_word_ratio, hype_word_count, sentiment_mismatch, category_enc],
+    signals: { rating_deviation, upper_ratio, unique_word_ratio, hype_word_count, sentiment_mismatch, exclamation_count }
+  };
+}
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function giniCounts(pos, total) {
+  if (!total) return 0;
+  const p = pos / total;
+  return 1 - p * p - (1 - p) * (1 - p);
+}
+
+function buildTree(X, y, indices, depth, maxDepth, mf, nFeat) {
+  const n = indices.length;
+  let pos = 0;
+  for (let i = 0; i < n; i++) pos += y[indices[i]];
+  const neg = n - pos;
+
+  if (depth >= maxDepth || n <= 4 || pos === 0 || neg === 0) {
+    return { leaf: true, vote: pos >= neg ? 1 : 0 };
+  }
+
+  const feats = shuffle(Array.from({ length: nFeat }, (_, i) => i)).slice(0, mf);
+  let bestFeat = -1;
+  let bestThresh = 0;
+  let bestGini = Infinity;
+
+  for (const f of feats) {
+    const pairs = indices.map(idx => [X[idx][f], y[idx]]).sort((a, b) => a[0] - b[0]);
+    let leftPos = 0;
+    let leftCount = 0;
+    const totalPos = pairs.reduce((s, p) => s + p[1], 0);
+
+    for (let i = 0; i < pairs.length - 1; i++) {
+      leftCount++;
+      leftPos += pairs[i][1];
+      if (pairs[i][0] === pairs[i + 1][0]) continue;
+      const rightCount = n - leftCount;
+      const rightPos = totalPos - leftPos;
+      const g = (leftCount * giniCounts(leftPos, leftCount) + rightCount * giniCounts(rightPos, rightCount)) / n;
+      if (g < bestGini) {
+        bestGini = g;
+        bestFeat = f;
+        bestThresh = (pairs[i][0] + pairs[i + 1][0]) / 2;
+      }
+    }
+  }
+
+  if (bestFeat === -1) return { leaf: true, vote: pos >= neg ? 1 : 0 };
+
+  const leftIdx = [];
+  const rightIdx = [];
+  for (let i = 0; i < n; i++) {
+    const idx = indices[i];
+    if (X[idx][bestFeat] <= bestThresh) leftIdx.push(idx);
+    else rightIdx.push(idx);
+  }
+  if (!leftIdx.length || !rightIdx.length) return { leaf: true, vote: pos >= neg ? 1 : 0 };
+
+  return {
+    leaf: false,
+    feat: bestFeat,
+    thresh: bestThresh,
+    left: buildTree(X, y, leftIdx, depth + 1, maxDepth, mf, nFeat),
+    right: buildTree(X, y, rightIdx, depth + 1, maxDepth, mf, nFeat)
+  };
+}
+
+async function buildForestAsync(X, y, nTrees, maxDepth, maxFeatures, note) {
+  const trees = [];
+  const n = X.length;
+  const nFeat = X[0].length;
+  const mf = maxFeatures || Math.max(1, Math.floor(Math.sqrt(nFeat)));
+  for (let t = 0; t < nTrees; t++) {
+    const sampleIdx = Array.from({ length: n }, () => Math.floor(Math.random() * n));
+    trees.push(buildTree(X, y, sampleIdx, 0, maxDepth || 12, mf, nFeat));
+    if ((t + 1) % 5 === 0 || t === nTrees - 1) {
+      statusNote.textContent = `${note} ${t + 1}/${nTrees} trees built...`;
+      await yieldToUI();
+    }
+  }
+  return trees;
+}
+
+function predictTree(node, x) {
+  while (!node.leaf) node = x[node.feat] <= node.thresh ? node.left : node.right;
+  return node.vote;
+}
+
+function predictBatch(forest, X) {
+  const preds = new Array(X.length);
+  const half = forest.length / 2;
+  for (let i = 0; i < X.length; i++) {
+    let votes = 0;
+    const row = X[i];
+    for (let t = 0; t < forest.length; t++) votes += predictTree(forest[t], row);
+    preds[i] = votes > half ? 1 : 0;
+  }
+  return preds;
+}
+
+function metrics(yTrue, yPred) {
+  let tp = 0, tn = 0, fp = 0, fn = 0;
+  for (let i = 0; i < yTrue.length; i++) {
+    if (yTrue[i] === 1 && yPred[i] === 1) tp++;
+    else if (yTrue[i] === 0 && yPred[i] === 0) tn++;
+    else if (yTrue[i] === 0 && yPred[i] === 1) fp++;
+    else fn++;
+  }
+  const total = tp + tn + fp + fn || 1;
+  const acc = ((tp + tn) / total) * 100;
+  const prec = (tp / (tp + fp || 1)) * 100;
+  const rec = (tp / (tp + fn || 1)) * 100;
+  const f1 = (2 * prec * rec) / (prec + rec || 1);
+  return { acc, prec, rec, f1, tp, tn, fp, fn };
+}
+
+function featureImportanceFast(forest, X, y, featNames) {
+  const basePred = predictBatch(forest, X);
+  const baseAcc = metrics(y, basePred).acc;
+  return featNames.map((_, fi) => {
+    const shuffled = X.map(r => r[fi]);
+    shuffle(shuffled);
+    const Xp = X.map((r, i) => {
+      const c = r.slice();
+      c[fi] = shuffled[i];
+      return c;
+    });
+    const acc = metrics(y, predictBatch(forest, Xp)).acc;
+    return Math.max(0, baseAcc - acc);
+  });
+}
+
+function setStep(id, state) {
+  document.getElementById(id).className = 'step ' + state;
+}
+
+function resetSteps() {
+  ['s1','s2','s3','s4','s5','s6'].forEach(id => setStep(id, ''));
+}
+
+function yieldToUI() {
+  return new Promise(resolve => setTimeout(resolve, 0));
+}
+
+async function runAnalysis() {
+  if (!csvData) return;
+  resetSteps();
+  progressWrap.style.display = 'block';
+  runBtn.disabled = true;
+  spinner.style.display = 'block';
+  runBtnText.textContent = 'Running…';
+
+  try {
+    setStep('s1', 'active');
+    statusNote.textContent = 'Loading and cleaning your dataset...';
+
+    let rows = csvData === 'DEMO'
+      ? [...DEMO_REAL.map(r => ({ ...r, text_: r.text, label: 'OR' })), ...DEMO_FAKE.map(r => ({ ...r, text_: r.text, label: 'CG' }))]
+      : parseCSV(csvData);
+
+    rows = rows.filter(r => {
+      const lbl = String(r.label || '').trim().toUpperCase();
+      const rat = Number.parseFloat(r.rating);
+      const text = String(r.text_ || r.text || '').trim();
+      if (!r.text_ && r.text) r.text_ = r.text;
+      return (lbl === 'CG' || lbl === 'OR') && !Number.isNaN(rat) && rat >= 1 && rat <= 5 && text.length > 0;
+    });
+
+    if (rows.length < 10) {
+      toast('❌ Not enough valid rows. Check your CSV columns.');
+      return;
+    }
+
+    const catSums = {};
+    const catCounts = {};
+    for (const r of rows) {
+      const c = String(r.category || '').trim();
+      catSums[c] = (catSums[c] || 0) + Number.parseFloat(r.rating);
+      catCounts[c] = (catCounts[c] || 0) + 1;
+    }
+    const catAvgs = {};
+    Object.keys(catSums).forEach(c => catAvgs[c] = catSums[c] / catCounts[c]);
+
+    realReviews = rows.filter(r => String(r.label).trim().toUpperCase() === 'OR');
+    fakeReviews = rows.filter(r => String(r.label).trim().toUpperCase() === 'CG');
+    parsedRows = rows;
+
+    setStep('s1', 'done');
+    setStep('s2', 'active');
+    statusNote.textContent = 'Engineering text features efficiently...';
+
+    const allFeats = [];
+    const chunkSize = 500;
+    for (let i = 0; i < rows.length; i++) {
+      allFeats.push(extractFeatures(rows[i], catAvgs));
+      if ((i + 1) % chunkSize === 0) {
+        statusNote.textContent = `Engineering features... ${i + 1}/${rows.length} rows processed`;
+        await yieldToUI();
+      }
+    }
+
+    setStep('s2', 'done');
+    setStep('s3', 'active');
+    statusNote.textContent = 'Preparing behavioral feature matrix...';
+    await yieldToUI();
+
+    const Xbasic = allFeats.map(f => f.basic);
+    const Xmod = allFeats.map(f => f.modified);
+    const y = rows.map(r => String(r.label).trim().toUpperCase() === 'CG' ? 1 : 0);
+
+    const n = rows.length;
+    const splitIdx = Math.floor(n * 0.75);
+    const idx = shuffle([...Array(n).keys()]);
+    const trainIdx = idx.slice(0, splitIdx);
+    const testIdx = idx.slice(splitIdx);
+
+    const XbTrain = trainIdx.map(i => Xbasic[i]);
+    const XbTest = testIdx.map(i => Xbasic[i]);
+    const XmTrain = trainIdx.map(i => Xmod[i]);
+    const XmTest = testIdx.map(i => Xmod[i]);
+    const yTrain = trainIdx.map(i => y[i]);
+    const yTest = testIdx.map(i => y[i]);
+
+    setStep('s3', 'done');
+    setStep('s4', 'active');
+    statusNote.textContent = 'Training Basic Random Forest...';
+    const basicForest = await buildForestAsync(XbTrain, yTrain, 18, 8, null, 'Basic RF');
+
+    setStep('s4', 'done');
+    setStep('s5', 'active');
+    statusNote.textContent = 'Training Modified Random Forest...';
+    const modForest = await buildForestAsync(XmTrain, yTrain, 28, 10, null, 'Modified RF');
+
+    setStep('s5', 'done');
+    setStep('s6', 'active');
+    statusNote.textContent = 'Computing metrics and charts...';
+    await yieldToUI();
+
+    const yPredBasic = predictBatch(basicForest, XbTest);
+    const yPredMod = predictBatch(modForest, XmTest);
+    const mBasic = metrics(yTest, yPredBasic);
+    const mMod = metrics(yTest, yPredMod);
+
+    const FEAT_NAMES_MOD = ['review_length','word_count','exclamation_count','question_count','avg_word_length','rating','rating_deviation','upper_ratio','unique_word_ratio','hype_word_count','sentiment_mismatch','category_enc'];
+    const fiLimit = Math.min(80, XmTrain.length);
+    const fiSubset = XmTrain.slice(0, fiLimit);
+    const fiY = yTrain.slice(0, fiLimit);
+    const fi = featureImportanceFast(modForest, fiSubset, fiY, FEAT_NAMES_MOD);
+
+    setStep('s6', 'done');
+    statusNote.textContent = `Analysis complete. Processed ${n.toLocaleString()} rows smoothly.`;
+    renderResults(mBasic, mMod, fi, FEAT_NAMES_MOD, n, testIdx.length);
+    toast('✅ Analysis completed successfully');
+  } catch (err) {
+    console.error(err);
+    toast('❌ Something went wrong while processing the dataset.');
+    statusNote.textContent = 'Processing failed. Please check the input format.';
+  } finally {
+    runBtn.disabled = false;
+    spinner.style.display = 'none';
+    runBtnText.textContent = '▶ Run Again';
+  }
+}
+
+function renderResults(mb, mm, fi, fiNames, total, testN) {
+  document.getElementById('results').style.display = 'block';
+  document.getElementById('datasetMeta').textContent = `${total.toLocaleString()} total rows · ${testN} test samples`;
+
+  const labels = ['Accuracy','Precision','Recall','F1-Score'];
+  const bVals = [mb.acc, mb.prec, mb.rec, mb.f1];
+  const mVals = [mm.acc, mm.prec, mm.rec, mm.f1];
+
+  const grid = document.getElementById('metricsGrid');
+  grid.innerHTML = labels.map((l,i) => `
+    <div class="metric-card">
+      <div class="metric-label">${l}</div>
+      <div class="metric-values">
+        <div>
+          <div style="font-size:0.7rem;color:rgba(13,13,15,0.4);font-family:'DM Mono',monospace;margin-bottom:2px">Basic RF</div>
+          <div class="metric-basic">${bVals[i].toFixed(1)}%</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:0.7rem;color:rgba(13,13,15,0.4);font-family:'DM Mono',monospace;margin-bottom:2px">Modified RF</div>
+          <div class="metric-modified">${mVals[i].toFixed(1)}%</div>
+        </div>
+      </div>
+      <div style="margin-top:0.8rem;display:flex;justify-content:flex-end">
+        <span class="metric-delta">+${(mVals[i]-bVals[i]).toFixed(2)}%</span>
+      </div>
+    </div>
+  `).join('');
+
+  if (barChartInst) barChartInst.destroy();
+  barChartInst = new Chart(document.getElementById('barChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Basic RF', data: bVals.map(v=>+v.toFixed(2)), backgroundColor: '#7F77DD', borderRadius: 6 },
+        { label: 'Modified RF', data: mVals.map(v=>+v.toFixed(2)), backgroundColor: '#1D9E75', borderRadius: 6 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'top', labels: { font:{family:'DM Mono',size:11} } } },
+      scales: {
+        y: { min: 0, max: 100, grid:{color:'#E8E8F0'}, ticks:{callback:v=>v+'%',font:{family:'DM Mono'}} },
+        x: { grid:{display:false}, ticks:{font:{family:'Syne',weight:'600'}} }
+      }
+    }
+  });
+
+  const gains = bVals.map((b,i) => +(mVals[i]-b).toFixed(2));
+  if (gainChartInst) gainChartInst.destroy();
+  gainChartInst = new Chart(document.getElementById('gainChart'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Improvement %', data: gains, backgroundColor: '#1D9E75', borderRadius: 6 }] },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend:{display:false} },
+      scales: {
+        x: { grid:{color:'#E8E8F0'}, ticks:{callback:v=>'+'+v+'%',font:{family:'DM Mono'}} },
+        y: { grid:{display:false}, ticks:{font:{family:'Syne',weight:'600',size:11}} }
+      }
+    }
+  });
+
+  renderCM('cmBasic', mb.tn, mb.fp, mb.fn, mb.tp);
+  renderCM('cmModified', mm.tn, mm.fp, mm.fn, mm.tp);
+
+  const sorted = fiNames.map((n,i)=>({n,v:fi[i]})).sort((a,b)=>b.v-a.v).slice(0,10);
+  const BEHAVIORAL = new Set(['rating_deviation','upper_ratio','unique_word_ratio','hype_word_count','sentiment_mismatch','category_enc']);
+  if (featChartInst) featChartInst.destroy();
+  featChartInst = new Chart(document.getElementById('featChart'), {
+    type: 'bar',
+    data: {
+      labels: sorted.map(s=>s.n),
+      datasets: [{ data: sorted.map(s=>+s.v.toFixed(4)), backgroundColor: sorted.map(s => BEHAVIORAL.has(s.n) ? '#1D9E75' : '#7F77DD'), borderRadius: 4 }]
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend:{display:false} },
+      scales: {
+        x: { grid:{color:'#E8E8F0'}, ticks:{font:{family:'DM Mono',size:10}} },
+        y: { grid:{display:false}, ticks:{font:{family:'DM Mono',size:10}} }
+      }
+    }
+  });
+
+  document.getElementById('results').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function renderCM(id, tn, fp, fn, tp) {
+  document.getElementById(id).innerHTML = `
+    <div class="cm-cell tn">${tn}<span>True Neg</span></div>
+    <div class="cm-cell fp">${fp}<span>False Pos</span></div>
+    <div class="cm-cell fn">${fn}<span>False Neg</span></div>
+    <div class="cm-cell tp">${tp}<span>True Pos</span></div>
+  `;
+}
+
+function pickSignals(row) {
+  const feats = extractFeatures(row, { [row.category || '']: Number.parseFloat(row.rating) || 3.5 }).signals;
+  const tags = [];
+  if (feats.hype_word_count >= 2) tags.push(['signal-suspicious', 'Hype-heavy wording']);
+  if (feats.upper_ratio > 0.12) tags.push(['signal-suspicious', 'Excess uppercase']);
+  if (feats.exclamation_count >= 2) tags.push(['signal-suspicious', 'Too many exclamations']);
+  if (feats.unique_word_ratio < 0.7) tags.push(['signal-suspicious', 'Repetitive wording']);
+  if (feats.sentiment_mismatch) tags.push(['signal-suspicious', 'Rating-text mismatch']);
+  if (!tags.length) tags.push(['signal-normal', 'Natural review pattern']);
+  return tags;
+}
+
+function showRandom(type) {
+  let pool = parsedRows;
+  if (type === 'real') pool = realReviews;
+  else if (type === 'fake') pool = fakeReviews;
+  if (!pool || !pool.length) {
+    toast('Run the analysis first to explore reviews.');
+    return;
+  }
+  const row = pool[Math.floor(Math.random() * pool.length)];
+  const label = String(row.label || '').trim().toUpperCase() === 'CG' ? 'fake' : 'real';
+  const box = document.getElementById('reviewDisplay');
+  const tags = pickSignals(row).map(([cls, txt]) => `<span class="signal-tag ${cls}">${txt}</span>`).join('');
+  box.className = `review-display ${label === 'fake' ? 'fake-review' : 'real-review'}`;
+  box.style.display = 'block';
+  box.innerHTML = `
+    <div class="review-badge ${label === 'fake' ? 'badge-fake' : 'badge-real'}">${label === 'fake' ? 'Likely Fake' : 'Likely Real'}</div>
+    <div class="review-text">“${String(row.text_ || row.text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}”</div>
+    <div style="font-family:'DM Mono',monospace;font-size:0.74rem;color:rgba(13,13,15,0.55)">Category: ${row.category || 'Unknown'} · Rating: ${row.rating || 'NA'}</div>
+    <div class="review-signals">${tags}</div>
+  `;
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+</script>
+</body>
+</html>
